@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import json
@@ -7,6 +8,14 @@ from .gemini_services import ask_gemini
 
 
 app = FastAPI(title="Domino Protocol API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---------------------------------------------------------
@@ -18,6 +27,9 @@ class PromptRequest(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
+    location: str
+    latitude: float
+    longitude: float
     text: str
 
 
