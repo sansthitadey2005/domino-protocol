@@ -1,195 +1,547 @@
 import React, { useState } from 'react'
-import { MapContainer, TileLayer, LayersControl, Circle, Tooltip, useMapEvents } from 'react-leaflet'
+import {
+  MapContainer,
+  TileLayer,
+  LayersControl,
+  CircleMarker,
+  Tooltip,
+  useMapEvents,
+} from 'react-leaflet'
 import './MapPage.css'
 
-const { BaseLayer, Overlay } = LayersControl
+const { BaseLayer } = LayersControl
 
-// Sample overlay data points
-const FLOOD_ZONES = [
-  { lat: 23.73, lon: 90.39, radius: 4000, color: '#00d4ff', label: 'Flood Zone A' },
-  { lat: 23.78, lon: 90.45, radius: 6000, color: '#00d4ff', label: 'Flood Zone B' },
-  { lat: 23.70, lon: 90.42, radius: 3500, color: '#0088cc', label: 'Flood Zone C' },
-]
+// ---------------------------------------------------------
+// MAP CLICK HANDLER
+// ---------------------------------------------------------
 
-const RAINFALL_ZONES = [
-  { lat: 23.85, lon: 90.40, radius: 5000, color: '#0044ff', label: '350mm/month' },
-  { lat: 23.72, lon: 90.38, radius: 7000, color: '#0033bb', label: '410mm/month' },
-]
-
-const INFRASTRUCTURE = [
-  { lat: 23.7946, lon: 90.4070, radius: 300, color: '#ff6b35', label: 'Shahjalal Hospital' },
-  { lat: 23.7465, lon: 90.3785, radius: 300, color: '#ff6b35', label: 'Dhaka Airport' },
-  { lat: 23.7259, lon: 90.4148, radius: 300, color: '#ff6b35', label: 'Buriganga Bridge' },
-  { lat: 23.8103, lon: 90.4125, radius: 300, color: '#ffd700', label: 'Power Station North' },
-]
-
-const ELEVATION_ZONES = [
-  { lat: 23.76, lon: 90.37, radius: 8000, color: '#00ff9d', label: 'High Elevation (>15m)' },
-  { lat: 23.82, lon: 90.48, radius: 5000, color: '#88ffcc', label: 'Mid Elevation (5–15m)' },
-]
-
-const LAYERS_INFO = [
-  { key: 'flood',          label: 'Flood Zones',      color: '#00d4ff', icon: '💧' },
-  { key: 'rainfall',       label: 'Rainfall Intensity', color: '#0044ff', icon: '🌧' },
-  { key: 'elevation',      label: 'Elevation Bands',  color: '#00ff9d', icon: '⛰' },
-  { key: 'infrastructure', label: 'Infrastructure',   color: '#ff6b35', icon: '🏗' },
-]
-
-function ClickMarker({ onCoord }) {
+function MapClickHandler({ onLocationSelect }) {
   useMapEvents({
-    click(e) { onCoord(e.latlng) }
+    click(e) {
+      onLocationSelect(e.latlng.lat, e.latlng.lng)
+    },
   })
+
   return null
 }
 
+// ---------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------
+
+function formatNumber(value, decimals = 2) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) {
+    return '—'
+  }
+
+  return number.toLocaleString(undefined, {
+    maximumFractionDigits: decimals,
+  })
+}
+
+// ---------------------------------------------------------
+// MAIN COMPONENT
+// ---------------------------------------------------------
+
 export default function MapPage() {
   const [clickedCoord, setClickedCoord] = useState(null)
-  const [activeLayers, setActiveLayers] = useState({
-    flood: true, rainfall: false, elevation: false, infrastructure: true,
-  })
 
-  const toggleLayer = (key) =>
-    setActiveLayers(prev => ({ ...prev, [key]: !prev[key] }))
+  const [geeData, setGeeData] = useState(null)
+
+  const [analysis, setAnalysis] = useState(null)
+
+  const [loading, setLoading] = useState(false)
+
+  const [error, setError] = useState(null)
+
+  // -------------------------------------------------------
+  // SELECT LOCATION
+  // -------------------------------------------------------
+
+  const handleLocationSelect = async (latitude, longitude) => {
+    setClickedCoord({
+      lat: latitude,
+      lng: longitude,
+    })
+
+    setGeeData(null)
+    setAnalysis(null)
+    setError(null)
+    setLoading(true)
+
+    try {
+      // ---------------------------------------------------
+      // 1. GET ACTUAL GEE DATA FOR SELECTED LOCATION
+      // ---------------------------------------------------
+
+      const geeResponse = await fetch(
+        `http://127.0.0.1:8000/gee-data?latitude=${encodeURIComponent(
+          latitude
+        )}&longitude=${encodeURIComponent(longitude)}`
+      )
+
+      if (!geeResponse.ok) {
+        const errorText = await geeResponse.text()
+
+        throw new Error(
+          errorText || `GEE request failed: ${geeResponse.status}`
+        )
+      }
+
+      const gee = await geeResponse.json()
+
+      console.log('SELECTED LOCATION GEE DATA:', gee)
+
+      setGeeData(gee)
+
+      // ---------------------------------------------------
+      // 2. SEND CORRECT REQUEST TO /analyze
+      // ---------------------------------------------------
+
+      const analyzeResponse = await fetch(
+        'http://127.0.0.1:8000/analyze',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            location: `Selected location (${latitude.toFixed(
+              4
+            )}, ${longitude.toFixed(4)})`,
+
+            latitude: latitude,
+
+            longitude: longitude,
+
+            text: 'Analyze the climate and geographic risk of this selected location.',
+          }),
+        }
+      )
+
+      if (!analyzeResponse.ok) {
+        const errorText = await analyzeResponse.text()
+
+        throw new Error(
+          errorText || `Analysis request failed: ${analyzeResponse.status}`
+        )
+      }
+
+      const result = await analyzeResponse.json()
+
+      console.log('LOCATION ANALYSIS:', result)
+
+      setAnalysis(result)
+    } catch (err) {
+      console.error('Location analysis failed:', err)
+
+      setError(err.message || 'Unable to analyze selected location.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // -------------------------------------------------------
+  // RENDER
+  // -------------------------------------------------------
 
   return (
     <div className="map-page">
-      {/* Sidebar */}
+
+      {/* ===================================================
+          SIDEBAR
+      =================================================== */}
+
       <aside className="map-sidebar">
+
         <div className="map-sidebar__header">
           <h2>Map Layers</h2>
-          <p>Toggle overlays to explore climate risk factors.</p>
+
+          <p>
+            Click anywhere on the map to analyze that
+            geographic location.
+          </p>
         </div>
 
-        <div className="layer-list">
-          {LAYERS_INFO.map(l => (
-            <button
-              key={l.key}
-              className={`layer-btn${activeLayers[l.key] ? ' layer-btn--active' : ''}`}
-              onClick={() => toggleLayer(l.key)}
-              style={activeLayers[l.key] ? { borderColor: l.color, color: l.color } : {}}
-            >
-              <span>{l.icon}</span>
-              <span className="layer-btn__label">{l.label}</span>
-              <span className="layer-btn__dot" style={{ background: activeLayers[l.key] ? l.color : '#4a5568' }} />
-            </button>
-          ))}
+        {/* -------------------------------------------------
+            INFORMATION
+        ------------------------------------------------- */}
+
+        <div className="map-sidebar__section">
+
+          <h3>Data Source</h3>
+
+          <p
+            style={{
+              fontSize: '0.8rem',
+              color: 'var(--text-muted)',
+              lineHeight: 1.6,
+            }}
+          >
+            Geographic values are retrieved from the
+            location-specific GEE dataset.
+          </p>
+
         </div>
 
         <hr className="divider" />
 
-        <div className="map-sidebar__section">
-          <h3>Legend</h3>
-          <div className="legend">
-            {LAYERS_INFO.map(l => (
-              <div key={l.key} className="legend-item">
-                <span className="legend-dot" style={{ background: l.color }} />
-                {l.label}
-              </div>
-            ))}
-            <div className="legend-item">
-              <span className="legend-dot" style={{ background: '#ff3d5a' }} />
-              Critical Risk Zone
-            </div>
-          </div>
-        </div>
+        {/* =================================================
+            SELECTED LOCATION
+        ================================================= */}
 
         {clickedCoord && (
           <>
-            <hr className="divider" />
             <div className="map-sidebar__section">
+
               <h3>Selected Location</h3>
+
               <div className="coord-display">
-                <div><span>Lat</span> {clickedCoord.lat.toFixed(5)}</div>
-                <div><span>Lon</span> {clickedCoord.lng.toFixed(5)}</div>
+
+                <div>
+                  <span>Lat</span>{' '}
+                  {clickedCoord.lat.toFixed(5)}
+                </div>
+
+                <div>
+                  <span>Lon</span>{' '}
+                  {clickedCoord.lng.toFixed(5)}
+                </div>
+
               </div>
+
             </div>
+
+            <hr className="divider" />
           </>
         )}
 
-        <hr className="divider" />
+        {/* =================================================
+            LOADING
+        ================================================= */}
+
+        {loading && (
+          <div className="map-sidebar__section">
+
+            <p
+              style={{
+                color: '#00d4ff',
+                fontSize: '0.85rem',
+              }}
+            >
+              Loading geographic data...
+            </p>
+
+          </div>
+        )}
+
+        {/* =================================================
+            ERROR
+        ================================================= */}
+
+        {error && (
+          <div className="map-sidebar__section">
+
+            <h3 style={{ color: '#ff5c5c' }}>
+              Error
+            </h3>
+
+            <p
+              style={{
+                color: '#ff8a8a',
+                fontSize: '0.78rem',
+                lineHeight: 1.5,
+                wordBreak: 'break-word',
+              }}
+            >
+              {error}
+            </p>
+
+          </div>
+        )}
+
+        {/* =================================================
+            GEE DATA
+        ================================================= */}
+
+        {geeData && (
+          <>
+            <div className="map-sidebar__section">
+
+              <h3>Location Data</h3>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '10px',
+                  marginTop: '12px',
+                }}
+              >
+
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    Rainfall
+                  </div>
+
+                  <strong>
+                    {formatNumber(geeData.rainfall_mm)} mm
+                  </strong>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    Elevation
+                  </div>
+
+                  <strong>
+                    {formatNumber(geeData.elevation_m)} m
+                  </strong>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    Population
+                  </div>
+
+                  <strong>
+                    {formatNumber(geeData.population)}
+                  </strong>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    Built-up Area
+                  </div>
+
+                  <strong>
+                    {formatNumber(geeData.builtup_area_m2)} m²
+                  </strong>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    Coastal Flood Depth
+                  </div>
+
+                  <strong>
+                    {formatNumber(
+                      geeData.coastal_flood_depth_m
+                    )}{' '}
+                    m
+                  </strong>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    Landcover
+                  </div>
+
+                  <strong>
+                    {formatNumber(geeData.landcover)}
+                  </strong>
+                </div>
+
+              </div>
+
+            </div>
+
+            <hr className="divider" />
+          </>
+        )}
+
+        {/* =================================================
+            ANALYSIS
+        ================================================= */}
+
+        {analysis && (
+          <>
+            <div className="map-sidebar__section">
+
+              <h3>Risk Analysis</h3>
+
+              <p
+                style={{
+                  fontSize: '0.8rem',
+                  lineHeight: 1.6,
+                  color: 'var(--text-muted)',
+                  marginTop: '10px',
+                }}
+              >
+                {analysis.summary}
+              </p>
+
+              {Array.isArray(analysis.risks) &&
+                analysis.risks.length > 0 && (
+                  <div style={{ marginTop: '14px' }}>
+
+                    <div
+                      style={{
+                        fontSize: '0.72rem',
+                        color: 'var(--text-muted)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      RISKS
+                    </div>
+
+                    <ul
+                      style={{
+                        paddingLeft: '18px',
+                        margin: 0,
+                        fontSize: '0.78rem',
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {analysis.risks.map((risk, index) => (
+                        <li key={index}>
+                          {risk}
+                        </li>
+                      ))}
+                    </ul>
+
+                  </div>
+                )}
+
+            </div>
+
+            <hr className="divider" />
+          </>
+        )}
+
+        {/* =================================================
+            INSTRUCTION
+        ================================================= */}
+
         <div className="map-sidebar__section">
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Click anywhere on the map to capture coordinates.
-            Layers are illustrative overlays based on sample data.
+
+          <p
+            style={{
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)',
+              lineHeight: 1.5,
+            }}
+          >
+            Click a location on the map. Only data associated
+            with the selected geographic coordinates will be
+            loaded.
           </p>
+
         </div>
+
       </aside>
 
-      {/* Map */}
+      {/* ===================================================
+          MAP
+      =================================================== */}
+
       <div className="map-container">
+
         <MapContainer
           center={[23.8103, 90.4125]}
-          zoom={11}
-          style={{ height: '100%', width: '100%' }}
+          zoom={7}
+          style={{
+            height: '100%',
+            width: '100%',
+          }}
           zoomControl={true}
         >
+
+          {/* =================================================
+              BASE MAPS
+          ================================================= */}
+
           <LayersControl position="topright">
-            <BaseLayer checked name="Dark (CartoDB)">
+
+            <BaseLayer
+              checked
+              name="OpenStreetMap"
+            >
               <TileLayer
-                attribution='&copy; <a href="https://carto.com">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              />
-            </BaseLayer>
-            <BaseLayer name="Satellite (ESRI)">
-              <TileLayer
-                attribution='&copy; Esri'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              />
-            </BaseLayer>
-            <BaseLayer name="OpenStreetMap">
-              <TileLayer
-                attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
             </BaseLayer>
+
+            <BaseLayer name="Satellite (ESRI)">
+              <TileLayer
+                attribution="&copy; Esri"
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              />
+            </BaseLayer>
+
           </LayersControl>
 
-          <ClickMarker onCoord={setClickedCoord} />
+          {/* =================================================
+              MAP CLICK
+          ================================================= */}
 
-          {/* Flood overlay */}
-          {activeLayers.flood && FLOOD_ZONES.map((z, i) => (
-            <Circle key={i} center={[z.lat, z.lon]} radius={z.radius}
-              pathOptions={{ color: z.color, fillColor: z.color, fillOpacity: 0.18, weight: 1.5 }}>
-              <Tooltip>{z.label}</Tooltip>
-            </Circle>
-          ))}
+          <MapClickHandler
+            onLocationSelect={handleLocationSelect}
+          />
 
-          {/* Rainfall overlay */}
-          {activeLayers.rainfall && RAINFALL_ZONES.map((z, i) => (
-            <Circle key={i} center={[z.lat, z.lon]} radius={z.radius}
-              pathOptions={{ color: z.color, fillColor: z.color, fillOpacity: 0.15, weight: 1, dashArray: '6 4' }}>
-              <Tooltip>{z.label}</Tooltip>
-            </Circle>
-          ))}
+          {/* =================================================
+              SELECTED LOCATION ONLY
+              
+              IMPORTANT:
+              There are NO hard-coded Dhaka circles here.
+          ================================================= */}
 
-          {/* Elevation overlay */}
-          {activeLayers.elevation && ELEVATION_ZONES.map((z, i) => (
-            <Circle key={i} center={[z.lat, z.lon]} radius={z.radius}
-              pathOptions={{ color: z.color, fillColor: z.color, fillOpacity: 0.12, weight: 1 }}>
-              <Tooltip>{z.label}</Tooltip>
-            </Circle>
-          ))}
-
-          {/* Infrastructure overlay */}
-          {activeLayers.infrastructure && INFRASTRUCTURE.map((z, i) => (
-            <Circle key={i} center={[z.lat, z.lon]} radius={z.radius}
-              pathOptions={{ color: z.color, fillColor: z.color, fillOpacity: 0.8, weight: 2 }}>
-              <Tooltip permanent={false}>{z.label}</Tooltip>
-            </Circle>
-          ))}
-
-          {/* Clicked location */}
           {clickedCoord && (
-            <Circle
-              center={[clickedCoord.lat, clickedCoord.lng]}
-              radius={500}
-              pathOptions={{ color: '#ff3d5a', fillColor: '#ff3d5a', fillOpacity: 0.6, weight: 2 }}
+            <CircleMarker
+              center={[
+                clickedCoord.lat,
+                clickedCoord.lng,
+              ]}
+              radius={9}
+              pathOptions={{
+                color: '#00d4ff',
+                fillColor: '#00d4ff',
+                fillOpacity: 0.9,
+                weight: 3,
+              }}
             >
-              <Tooltip permanent>Selected</Tooltip>
-            </Circle>
+              <Tooltip permanent>
+                Selected Location
+              </Tooltip>
+            </CircleMarker>
           )}
+
         </MapContainer>
+
       </div>
+
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { hazardOptions } from '../data/sampleData'
 import { api } from '../api/client'
 import './Analysis.css'
@@ -18,6 +18,7 @@ const QUICK_LOCATIONS = [
 
 export default function Analysis() {
   const navigate = useNavigate()
+  const routeLocation = useLocation()
   const [form, setForm] = useState({
     locationName: '',
     lat: '',
@@ -42,74 +43,48 @@ export default function Analysis() {
     setForm(f => ({ ...f, locationName: loc.name, lat: String(loc.lat), lon: String(loc.lon) }))
   }
 
- const handleSubmit = async (e) => {
-  e.preventDefault()
-  setError('')
+  // If the user arrived here from the map, use the clicked coordinates.
+  React.useEffect(() => {
+    const selected = routeLocation.state?.mapLocation
+    if (!selected) return
+    setForm(f => ({
+      ...f,
+      lat: String(selected.lat),
+      lon: String(selected.lon),
+      locationName: selected.name || '',
+    }))
+  }, [routeLocation.state])
 
-  if (!form.lat || !form.lon) {
-    setError('Please enter latitude and longitude.')
-    return
-  }
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!form.lat || !form.lon) { setError('Please enter latitude and longitude.'); return }
+    if (form.hazards.length === 0) { setError('Select at least one hazard type.'); return }
 
-  if (form.hazards.length === 0) {
-    setError('Select at least one hazard type.')
-    return
-  }
+    setLoading(true)
+    try {
+      const payload = {
+        locationName: form.locationName || `Location ${Number(form.lat).toFixed(4)}, ${Number(form.lon).toFixed(4)}`,
+        latitude: Number(form.lat),
+        longitude: Number(form.lon),
+        lat: Number(form.lat),
+        lon: Number(form.lon),
+        hazards: form.hazards,
+        timeframe: form.timeframe,
+        scenario: form.scenario,
+        radius: Number(form.radius),
+        radius_km: Number(form.radius),
+      }
 
-  setLoading(true)
-
-  try {
-    const payload = {
-      location: form.locationName || 'Unknown location',
-      latitude: Number(form.lat),
-      longitude: Number(form.lon),
-      text: `Analyze the climate risks, ${form.hazards.join(', ')}, and disaster preparedness for ${form.locationName || 'this location'}. Timeframe: ${form.timeframe}. Climate scenario: ${form.scenario}. Analysis radius: ${form.radius} km.`
+      const result = await api.analyzeRisk(payload)
+      navigate('/results', { state: { analysisInput: form, result } })
+    } catch (err) {
+      console.error('Analysis failed:', err)
+      setError(`Analysis failed: ${err.message}. Make sure the FastAPI backend is running on http://localhost:8000.`)
+    } finally {
+      setLoading(false)
     }
-
-    console.log('Sending to backend:', payload)
-
-    const geeResponse = await fetch(
-  `http://127.0.0.1:8000/gee-data?latitude=${Number(form.lat)}&longitude=${Number(form.lon)}`
-)
-
-if (!geeResponse.ok) {
-  throw new Error('Could not retrieve GEE data.')
-}
-
-const geeData = await geeResponse.json()
-
-console.log('Real GEE data:', geeData)
-
-const analysisPayload = {
-  ...payload,
-  text: `${payload.text}
-
-REAL GEE DATA:
-${JSON.stringify(geeData)}
-`
-}
-
-const result = await api.analyzeRisk(analysisPayload)
-
-console.log('Backend response:', result)
-
-navigate('/results', {
-  state: {
-    analysisInput: form,
-    result,
-    geeData
   }
-})
-  } catch (err) {
-    console.error('Analysis failed:', err)
-    setError(
-      err.message ||
-      'Could not connect to the Domino Protocol backend.'
-    )
-  } finally {
-    setLoading(false)
-  }
-}
 
   return (
     <div className="page">
