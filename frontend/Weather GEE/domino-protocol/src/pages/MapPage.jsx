@@ -12,6 +12,12 @@ import './MapPage.css'
 const { BaseLayer } = LayersControl
 
 // ---------------------------------------------------------
+// DEPLOYED BACKEND
+// ---------------------------------------------------------
+
+const API_BASE_URL = 'https://domino-protocol.onrender.com'
+
+// ---------------------------------------------------------
 // MAP CLICK HANDLER
 // ---------------------------------------------------------
 
@@ -77,7 +83,7 @@ export default function MapPage() {
       // ---------------------------------------------------
 
       const geeResponse = await fetch(
-        `http://127.0.0.1:8000/gee-data?latitude=${encodeURIComponent(
+        `${API_BASE_URL}/gee-data?latitude=${encodeURIComponent(
           latitude
         )}&longitude=${encodeURIComponent(longitude)}`
       )
@@ -101,12 +107,14 @@ export default function MapPage() {
       // ---------------------------------------------------
 
       const analyzeResponse = await fetch(
-        'http://127.0.0.1:8000/analyze',
+        `${API_BASE_URL}/analyze`,
         {
           method: 'POST',
+
           headers: {
             'Content-Type': 'application/json',
           },
+
           body: JSON.stringify({
             location: `Selected location (${latitude.toFixed(
               4
@@ -116,7 +124,16 @@ export default function MapPage() {
 
             longitude: longitude,
 
-            text: 'Analyze the climate and geographic risk of this selected location.',
+            text: `
+Analyze the climate and geographic risk of this selected location.
+
+Selected coordinates:
+Latitude: ${latitude}
+Longitude: ${longitude}
+
+GEE geographic data:
+${JSON.stringify(gee, null, 2)}
+            `,
           }),
         }
       )
@@ -125,7 +142,8 @@ export default function MapPage() {
         const errorText = await analyzeResponse.text()
 
         throw new Error(
-          errorText || `Analysis request failed: ${analyzeResponse.status}`
+          errorText ||
+            `Analysis request failed: ${analyzeResponse.status}`
         )
       }
 
@@ -137,7 +155,10 @@ export default function MapPage() {
     } catch (err) {
       console.error('Location analysis failed:', err)
 
-      setError(err.message || 'Unable to analyze selected location.')
+      setError(
+        err.message ||
+          'Unable to analyze selected location.'
+      )
     } finally {
       setLoading(false)
     }
@@ -291,7 +312,10 @@ export default function MapPage() {
                   </div>
 
                   <strong>
-                    {formatNumber(geeData.rainfall_mm)} mm
+                    {formatNumber(
+                      geeData.rainfall_mm
+                    )}{' '}
+                    mm
                   </strong>
                 </div>
 
@@ -306,7 +330,10 @@ export default function MapPage() {
                   </div>
 
                   <strong>
-                    {formatNumber(geeData.elevation_m)} m
+                    {formatNumber(
+                      geeData.elevation_m
+                    )}{' '}
+                    m
                   </strong>
                 </div>
 
@@ -321,7 +348,9 @@ export default function MapPage() {
                   </div>
 
                   <strong>
-                    {formatNumber(geeData.population)}
+                    {formatNumber(
+                      geeData.population
+                    )}
                   </strong>
                 </div>
 
@@ -336,7 +365,10 @@ export default function MapPage() {
                   </div>
 
                   <strong>
-                    {formatNumber(geeData.builtup_area_m2)} m²
+                    {formatNumber(
+                      geeData.builtup_area_m2
+                    )}{' '}
+                    m²
                   </strong>
                 </div>
 
@@ -369,7 +401,9 @@ export default function MapPage() {
                   </div>
 
                   <strong>
-                    {formatNumber(geeData.landcover)}
+                    {formatNumber(
+                      geeData.landcover
+                    )}
                   </strong>
                 </div>
 
@@ -424,11 +458,13 @@ export default function MapPage() {
                         lineHeight: 1.6,
                       }}
                     >
-                      {analysis.risks.map((risk, index) => (
-                        <li key={index}>
-                          {risk}
-                        </li>
-                      ))}
+                      {analysis.risks.map(
+                        (risk, index) => (
+                          <li key={index}>
+                            {risk}
+                          </li>
+                        )
+                      )}
                     </ul>
 
                   </div>
@@ -513,9 +549,6 @@ export default function MapPage() {
 
           {/* =================================================
               SELECTED LOCATION ONLY
-              
-              IMPORTANT:
-              There are NO hard-coded Dhaka circles here.
           ================================================= */}
 
           {clickedCoord && (
