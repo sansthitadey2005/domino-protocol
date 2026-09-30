@@ -14,7 +14,10 @@ app = FastAPI(title="Domino Protocol API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://domino-protocol-frontend.onrender.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,7 +80,13 @@ def ask(request: PromptRequest):
 # ---------------------------------------------------------
 # DOMINO PROTOCOL ANALYSIS
 # ---------------------------------------------------------
-GEE_FILE = Path(__file__).resolve().parent.parent / "gee" / "combined_risk" / "combined_risk_data.csv"
+
+GEE_FILE = (
+    Path(__file__).resolve().parent.parent
+    / "gee"
+    / "combined_risk"
+    / "combined_risk_data.csv"
+)
 
 
 def get_nearest_gee_data(latitude: float, longitude: float):
@@ -118,12 +127,15 @@ def gee_data(latitude: float, longitude: float):
         )
 
     return row
+
+
 @app.post("/analyze", response_model=AnalysisResponse)
 def analyze(request: AnalyzeRequest):
 
     # ---------------------------------------------
     # 1. Get location-specific GEE data
     # ---------------------------------------------
+
     gee = get_nearest_gee_data(
         request.latitude,
         request.longitude
@@ -138,12 +150,16 @@ def analyze(request: AnalyzeRequest):
     # ---------------------------------------------
     # 2. Convert available values to numbers
     # ---------------------------------------------
+
     def num(key):
         try:
             value = gee.get(key, "")
+
             if value in ("", None):
                 return 0.0
+
             return float(value)
+
         except (ValueError, TypeError):
             return 0.0
 
@@ -159,12 +175,19 @@ def analyze(request: AnalyzeRequest):
     # ---------------------------------------------
 
     rainfall_score = min(rainfall / 2000 * 100, 100)
+
     flood_score = min(flood_depth / 6 * 100, 100)
 
     # Low elevation = greater exposure
-    elevation_score = max(0, min((10 - elevation) / 10 * 100, 100))
+    elevation_score = max(
+        0,
+        min((10 - elevation) / 10 * 100, 100)
+    )
 
-    population_score = min(population / 100000 * 100, 100)
+    population_score = min(
+        population / 100000 * 100,
+        100
+    )
 
     risk_score = (
         rainfall_score * 0.35 +
@@ -173,12 +196,17 @@ def analyze(request: AnalyzeRequest):
         population_score * 0.15
     )
 
-    risk_score = round(max(0, min(risk_score, 100)), 1)
+    risk_score = round(
+        max(0, min(risk_score, 100)),
+        1
+    )
 
     if risk_score >= 75:
         risk_level = "HIGH"
+
     elif risk_score >= 50:
         risk_level = "MEDIUM"
+
     else:
         risk_level = "LOW"
 
@@ -269,7 +297,9 @@ Do not add text before or after the JSON.
 
         for field in required_fields:
             if field not in result:
-                raise ValueError(f"Missing field: {field}")
+                raise ValueError(
+                    f"Missing field: {field}"
+                )
 
         return AnalysisResponse.model_validate(result)
 
