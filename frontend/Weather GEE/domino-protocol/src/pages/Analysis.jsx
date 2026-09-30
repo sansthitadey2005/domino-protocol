@@ -69,7 +69,7 @@ export default function Analysis() {
     console.log('Sending to backend:', payload)
 
     const geeResponse = await fetch(
-  `http://127.0.0.1:8000/gee-data?latitude=${Number(form.lat)}&longitude=${Number(form.lon)}`
+  `https://domino-protocol.onrender.com/gee-data?latitude=${Number(form.lat)}&longitude=${Number(form.lon)}`
 )
 
 if (!geeResponse.ok) {
