@@ -71,8 +71,24 @@ export default function Results() {
   const apiResult = location.state?.result
   const analysisInput = location.state?.analysisInput
 
-  const latitude = Number(analysisInput?.lat)
-  const longitude = Number(analysisInput?.lon)
+  // ---------------------------------------------------------
+  // LOCATION COORDINATES
+  // ---------------------------------------------------------
+  // Support both:
+  //   latitude / longitude
+  // and:
+  //   lat / lon
+  //
+  // This prevents the Results page from showing
+  // "Location coordinates are missing" when Analysis
+  // sends the full coordinate names.
+  const latitude = Number(
+    analysisInput?.latitude ?? analysisInput?.lat
+  )
+
+  const longitude = Number(
+    analysisInput?.longitude ?? analysisInput?.lon
+  )
 
   const [geeData, setGeeData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
@@ -83,16 +99,23 @@ export default function Results() {
   // ---------------------------------------------------------
 
   React.useEffect(() => {
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
       setLoading(false)
       setError('Location coordinates are missing.')
       return
     }
 
+    // IMPORTANT:
+    // Use the deployed Render backend instead of localhost.
     const url =
-      `http://127.0.0.1:8000/gee-data` +
+      `https://domino-protocol.onrender.com/gee-data` +
       `?latitude=${latitude}` +
       `&longitude=${longitude}`
+
+    console.log('Fetching location-specific GEE data:', url)
 
     setLoading(true)
     setError(null)
@@ -100,18 +123,28 @@ export default function Results() {
     fetch(url)
       .then((response) => {
         if (!response.ok) {
-          throw new Error('Failed to fetch GEE data.')
+          throw new Error(
+            `Failed to fetch GEE data. HTTP ${response.status}`
+          )
         }
 
         return response.json()
       })
       .then((result) => {
-        console.log('Location-specific GEE data:', result)
+        console.log(
+          'Location-specific GEE data:',
+          result
+        )
+
         setGeeData(result)
       })
       .catch((err) => {
         console.error('GEE data error:', err)
-        setError(err.message || 'Unable to load location data.')
+
+        setError(
+          err.message ||
+          'Unable to load location data.'
+        )
       })
       .finally(() => {
         setLoading(false)
@@ -126,7 +159,13 @@ export default function Results() {
     return (
       <div className="page">
         <div className="container">
-          <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <div
+            className="card"
+            style={{
+              padding: '3rem',
+              textAlign: 'center',
+            }}
+          >
             <h2>Loading location data...</h2>
 
             <p
@@ -136,9 +175,13 @@ export default function Results() {
               }}
             >
               Fetching GEE hazard data for{' '}
-              {Number.isFinite(latitude) ? latitude.toFixed(4) : '—'},
-              {' '}
-              {Number.isFinite(longitude) ? longitude.toFixed(4) : '—'}
+              {Number.isFinite(latitude)
+                ? latitude.toFixed(4)
+                : '—'}
+              ,{' '}
+              {Number.isFinite(longitude)
+                ? longitude.toFixed(4)
+                : '—'}
             </p>
           </div>
         </div>
@@ -169,7 +212,8 @@ export default function Results() {
                 marginTop: '0.75rem',
               }}
             >
-              {error || 'No GEE data was returned for this location.'}
+              {error ||
+                'No GEE data was returned for this location.'}
             </p>
 
             <button
@@ -189,13 +233,26 @@ export default function Results() {
   // REAL GEE VALUES
   // ---------------------------------------------------------
 
-  const rainfall = Number(geeData.rainfall_mm) || 0
-  const elevation = Number(geeData.elevation_m) || 0
-  const riverFlood = Number(geeData.river_flood_depth_m) || 0
-  const coastalFlood = Number(geeData.coastal_flood_depth_m) || 0
-  const population = Number(geeData.population) || 0
-  const builtupArea = Number(geeData.builtup_area_m2) || 0
-  const landcover = Number(geeData.landcover) || 0
+  const rainfall =
+    Number(geeData.rainfall_mm) || 0
+
+  const elevation =
+    Number(geeData.elevation_m) || 0
+
+  const riverFlood =
+    Number(geeData.river_flood_depth_m) || 0
+
+  const coastalFlood =
+    Number(geeData.coastal_flood_depth_m) || 0
+
+  const population =
+    Number(geeData.population) || 0
+
+  const builtupArea =
+    Number(geeData.builtup_area_m2) || 0
+
+  const landcover =
+    Number(geeData.landcover) || 0
 
   // ---------------------------------------------------------
   // LOCATION-SPECIFIC HAZARD SCORES
@@ -324,12 +381,6 @@ export default function Results() {
   // ---------------------------------------------------------
   // RAINFALL DATA
   // ---------------------------------------------------------
-  // The current GEE combined-risk dataset provides rainfall_mm,
-  // not 12 separate monthly values.
-  //
-  // Therefore we show the actual location rainfall as a single
-  // annual/location measurement instead of displaying fake
-  // monthly values from sampleData.
 
   const rainfallData = [
     {
@@ -341,7 +392,6 @@ export default function Results() {
   // ---------------------------------------------------------
   // CURRENT RISK COMPONENT DATA
   // ---------------------------------------------------------
-  // This replaces the old hard-coded historical sample data.
 
   const riskHistory = [
     {
@@ -569,6 +619,7 @@ export default function Results() {
                   bottom: 0,
                 }}
               >
+
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="#1e2d45"
@@ -608,6 +659,7 @@ export default function Results() {
                   fill="#00d4ff"
                   radius={[3, 3, 0, 0]}
                 />
+
               </BarChart>
             </ResponsiveContainer>
 
